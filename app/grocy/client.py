@@ -268,6 +268,7 @@ class GrocyClient:
                 url,
                 headers=self.headers,
                 data=json.dumps(grocy_barcode)
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -398,6 +399,7 @@ class GrocyClient:
                 url,
                 headers=self.headers,
                 data=json.dumps(grocy_purchase)
+            )
             response.raise_for_status()
             return response.json()
         except Exception as e:
