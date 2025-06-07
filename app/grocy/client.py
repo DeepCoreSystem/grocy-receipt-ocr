@@ -15,16 +15,22 @@ logger = get_logger(__name__)
 
 class GrocyClient:
     """
-    Client for interacting with the Grocy API
+    Client for interacting with the Grocy API to manage products, barcodes, purchases,
+    and inventory data.
     """
-    
+
     def __init__(self, api_url=None, api_key=None):
         """
-        Initialize the Grocy client
+        Initialize the Grocy client with API credentials.
         
         Args:
-            api_url: Grocy API URL
-            api_key: Grocy API key
+            api_url (str, optional): Grocy API URL. If not provided, tries to get from 
+                                    GROCY_API_URL environment variable.
+            api_key (str, optional): Grocy API key. If not provided, tries to get from 
+                                    GROCY_API_KEY environment variable.
+                                    
+        Raises:
+            ValueError: If both arguments and environment variables are missing.
         """
         self.api_url = api_url or os.environ.get('GROCY_API_URL')
         self.api_key = api_key or os.environ.get('GROCY_API_KEY')
@@ -42,487 +48,433 @@ class GrocyClient:
     
     def find_product_by_barcode(self, barcode):
         """
-        Find a product by barcode
+        Find a product by its barcode.
         
         Args:
-            barcode: Product barcode
+            barcode (str): The product barcode to search for.
             
         Returns:
-            Product data if found, None otherwise
+            dict: Product data if found, None otherwise.
         """
-
         logger.info(f"Finding product by barcode: {barcode}")
         url = f"{self.api_url}/stock/products/by-barcode/{barcode}"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
-            product = response.json()
-            if product:
-                return product
-            
-            return None
+            return response.json() or None
         except Exception as e:
-            print(f"Error finding product by barcode: {e}")
+            logger.error(f"Error finding product by barcode: {e}")
             return None
         
     def products_for_group(self, product_group_id):
         """
-        Find a product by group id
+        Get all products belonging to a specific product group.
         
         Args:
-            product_group_id: Product group id
+            product_group_id (int): The ID of the product group.
             
         Returns:
-            Product list if found, [] otherwise
+            list: List of products in the group, empty list if none found or error occurs.
         """
-
-        logger.info(f"Finding product by group: {product_group_id}")
+        logger.info(f"Finding products by group: {product_group_id}")
         url = f"{self.api_url}/objects/products?query%5B%5D=product_group_id%3D{product_group_id}&order=name%3Aasc"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
-            products = response.json()
-            if products:
-                return products
-            
-            return []
+            return response.json() or []
         except Exception as e:
-            print(f"Error finding product by group: {e}")
+            logger.error(f"Error finding products by group: {e}")
             return []
     
     def get_product_categories(self):
         """
-        Get all product categories
+        Retrieve all product categories/groups from Grocy.
         
         Returns:
-            List of product categories
+            list: List of product categories, empty list if error occurs.
         """
         url = f"{self.api_url}/objects/product_groups"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product categories: {e}")
+            logger.error(f"Error getting product categories: {e}")
             return []
 
     def get_locations(self):
         """
-        Get all locations
+        Retrieve all storage locations from Grocy.
         
         Returns:
-            List of locations
+            list: List of locations, empty list if error occurs.
         """
         url = f"{self.api_url}/objects/locations"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product locations: {e}")
+            logger.error(f"Error getting locations: {e}")
             return []
 
     def get_quantity_units(self):
         """
-        Get all quantity_units
+        Retrieve all quantity units from Grocy.
         
         Returns:
-            List of quantity_units
+            list: List of quantity units, empty list if error occurs.
         """
         url = f"{self.api_url}/objects/quantity_units"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product quantity_units: {e}")
+            logger.error(f"Error getting quantity units: {e}")
             return []
 
     def get_shopping_locations(self):
         """
-        Get all quantity_units
+        Retrieve all shopping locations from Grocy.
         
         Returns:
-            List of quantity_units
+            list: List of shopping locations, empty list if error occurs.
         """
         url = f"{self.api_url}/objects/shopping_locations"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product quantity_units: {e}")
+            logger.error(f"Error getting shopping locations: {e}")
             return []
         
-    def external_lookup(self, barcode: str):
+    def external_lookup(self, barcode):
         """
-        Get all quantity_units
+        Perform an external barcode lookup.
         
+        Args:
+            barcode (str): The barcode to look up.
+            
         Returns:
-            List of quantity_units
+            dict: External product data if found, empty dict if error occurs.
         """
         url = f"{self.api_url}/stock/barcodes/external-lookup/{barcode}"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product quantity_units: {e}")
-            return []
+            logger.error(f"Error performing external barcode lookup: {e}")
+            return {}
 
     def create_product(self, product_data):
         """
-        Create a new product
+        Create a new product in Grocy.
         
         Args:
-            product_data: Dictionary containing product data
-            
+            product_data (dict): Dictionary containing product data including:
+                - name (str): Product name
+                - description (str, optional): Product description
+                - product_group_id (int): Category ID
+                - location_id (int): Storage location ID
+                - qu_id_purchase (int): Purchase quantity unit ID
+                - qu_id_stock (int): Stock quantity unit ID
+                - barcode (str, optional): Product barcode
+                - out_of_stock_default (bool, optional): Treat opened as out of stock
+                
         Returns:
-            Created product data if successful, error message otherwise
+            dict: Created product data if successful, error dict otherwise.
         """
         url = f"{self.api_url}/objects/products"
+        logger.info(f"Creating product with data: {product_data}")
         
-        logger.info(f"Product Data: {product_data}")
-        # Find category ID if category name is provided
-        product_data['product_group_id'] = product_data['product_group_id']
-        product_data['location_id'] = product_data['location_id']
-        product_data['qu_id_stock'] = product_data['qu_id_stock']
-        product_data['qu_id_purchase'] = product_data['qu_id_purchase']
-        # del product_data['category']
-        # del product_data['location']
-        
-        # Prepare product data for Grocy API
         grocy_product = {
             'name': product_data['name'],
             'description': product_data.get('description', ''),
             'product_group_id': product_data.get('product_group_id'),
             'location_id': product_data.get('location_id'),
-            'qu_id_purchase': product_data.get('qu_id_purchase'),  # Default quantity unit
-            'qu_id_stock': product_data.get('qu_id_stock'),     # Default quantity unit
-            'treat_opened_as_out_of_stock': product_data.get('out_of_stock_default',False),
-            # 'qu_factor_purchase_to_stock': 1
+            'qu_id_purchase': product_data.get('qu_id_purchase'),
+            'qu_id_stock': product_data.get('qu_id_stock'),
+            'treat_opened_as_out_of_stock': product_data.get('out_of_stock_default', False),
         }
 
-        logger.info(f"Creating product: {grocy_product}")
-        
         try:
             response = requests.post(
                 url,
                 headers=self.headers,
                 data=json.dumps(grocy_product)
             )
-            logger.info(f"Product response: {response.json()}")
-            response.raise_for_status()
-
-            if(response.status_code == 400):
-                logger.error(f"Error creating product: {response.json()}")
-                return {'error': response.json().get('error')}
             
-            # Get the created product
+            if response.status_code == 400:
+                error_msg = response.json().get('error')
+                logger.error(f"Error creating product: {error_msg}")
+                return {'error': error_msg}
+            
             product_id = response.json().get('created_object_id')
             product = self.get_product(product_id)
         except Exception as e:
-            print(f"Error getting product, trying by name: {e}")
+            logger.error(f"Error creating product, trying to find by name: {e}")
             product = self.get_product_by_name(product_data['name'])
-            logger.info(f"Product: {product}")
             
-        if(product):
-            # Add barcode to product
-            barcode = product_data.get('barcode')
-            product_id = product.get('id')
-            logger.info(f"Product ID: {product_id}")
-            logger.info(f"Product Barcode: {barcode}")
-            if barcode:
-                assignments = {
-                    'note': product_data['name']
-                }
-                logger.info(f"Assignments: {assignments}")
-                barcode_response = self.add_barcode_to_product(product_id, barcode, assignments)
-                if 'error' in barcode_response:
-                    return {'error': barcode_response['error']}
+        if product and 'barcode' in product_data:
+            barcode_response = self.add_barcode_to_product(
+                product['id'],
+                product_data['barcode'],
+                {'note': product_data['name']}
+            )
+            if 'error' in barcode_response:
+                return {'error': barcode_response['error']}
 
-            return product
-        
-        return None
+        return product or None
 
-        
-    def add_barcode_to_product(self, product_id, barcode, assignments ):
+    def add_barcode_to_product(self, product_id, barcode, assignments):
         """
-        Add barcode to a product
-
+        Add a barcode to an existing product.
+        
         Args:
-            product_id: Product ID
-            barcode: Barcode to add
-
+            product_id (int): ID of the product to add barcode to
+            barcode (str): Barcode to add
+            assignments (dict): Additional barcode data including:
+                - shopping_location_id (int, optional)
+                - note (str, optional)
+                - display_amount (float, optional): Defaults to 1
+                
         Returns:
-            Barcode data if successful, error message otherwise
+            dict: Barcode data if successful, error dict otherwise.
         """
         url = f"{self.api_url}/objects/product_barcodes"
-
         standardized_barcode = self.normalize_receipt_barcode(barcode)
-        # Prepare barcode data for Grocy API
         
-        # {"amount": "8", "qu_id": "9", "note": "AVOCADO, BAG", "shopping_location_id": "","product_id":33,"barcode":234234}
         grocy_barcode = {
-            'shopping_location_id': assignments.get('shopping_location_id',''),
-            'note': assignments.get('note',''),
+            'shopping_location_id': assignments.get('shopping_location_id', ''),
+            'note': assignments.get('note', ''),
             'barcode': standardized_barcode,
             'product_id': product_id,
-            'amount': assignments.get('display_amount',1),  # Default quantity unit
+            'amount': assignments.get('display_amount', 1),
         }
-        logger.info(f"Barcode request: {grocy_barcode}")
+        logger.info(f"Adding barcode: {grocy_barcode}")
 
         try:
             response = requests.post(
                 url,
                 headers=self.headers,
                 data=json.dumps(grocy_barcode)
-            )
             response.raise_for_status()
-            logger.info(f"Barcode response: {response.json()}")
             return response.json()
-        
         except Exception as e:
-            print(f"Error adding barcode to product: {e}")
+            logger.error(f"Error adding barcode to product: {e}")
             return {'error': str(e)}
-        
     
     def get_product(self, product_id):
         """
-        Get a product by ID
+        Get product details by ID.
         
         Args:
-            product_id: Product ID
+            product_id (int): The product ID to retrieve.
             
         Returns:
-            Product data if found, None otherwise
+            dict: Product data if found, None otherwise.
         """
         url = f"{self.api_url}/objects/products/{product_id}"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product: {e}")
+            logger.error(f"Error getting product: {e}")
             return None
     
     def get_product_details(self, product_id):
         """
-        Get a product by ID
+        Get detailed stock information for a product.
         
         Args:
-            product_id: Product ID
+            product_id (int): The product ID to retrieve details for.
             
         Returns:
-            Product data if found, None otherwise
+            dict: Detailed product data if found, None otherwise.
         """
         url = f"{self.api_url}/stock/products/{product_id}"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product: {e}")
+            logger.error(f"Error getting product details: {e}")
             return None
         
     def get_all_products(self):
         """
-        Get all products
+        Retrieve all products from Grocy.
         
-        Args:
-            products: Product ID
-            
         Returns:
-            Product data if found, None otherwise
+            list: List of all products, None if error occurs.
         """
         url = f"{self.api_url}/objects/products"
         
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error getting product: {e}")
+            logger.error(f"Error getting all products: {e}")
             return None
         
     def get_product_by_name(self, product_name):
         """
-        Get a product by name
-
+        Find a product by its exact name.
+        
         Args:
-            product_name: Product name
-
+            product_name (str): The exact product name to search for.
+            
         Returns:
-            Product data if found, None otherwise
+            dict: Product data if found, None otherwise.
         """
         products = self.get_all_products()
-
-        for product in products:
-            if product.get('name') == product_name:
-                return product
-
-        return None
+        return next((p for p in products if p.get('name') == product_name), None)
     
     def get_quantity_unit_conversions(self):
         """
-        Get all quantity unit conversions
-
+        Retrieve all quantity unit conversion factors.
+        
         Returns:
-            List of quantity unit conversions
+            list: List of unit conversions, empty list if error occurs.
         """
         url = f"{self.api_url}/objects/quantity_unit_conversions"
 
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-
             return response.json()
         except Exception as e:
-            print(f"Error getting quantity unit conversions: {e}")
+            logger.error(f"Error getting quantity unit conversions: {e}")
             return []
 
     def add_purchase(self, purchase_data):
         """
-        Add a purchase
+        Record a product purchase in Grocy.
         
         Args:
-            purchase_data: Dictionary containing purchase data
-            
+            purchase_data (dict): Dictionary containing:
+                - product_id (int): ID of purchased product
+                - amount (float): Purchase amount
+                - days_out (int): Days until expiration
+                - shopping_location_id (int): Purchase location ID
+                - price (float, optional): Purchase price
+                
         Returns:
-            Purchase data if successful, error message otherwise
+            dict: Purchase data if successful, error dict otherwise.
         """
         product_data = self.get_product_details(purchase_data['product_id'])
-        logger.info(f"Adding purchase: {purchase_data}")
-        logger.info(f"For product: {product_data}")
+        logger.info(f"Adding purchase for product {product_data} with data {purchase_data}")
 
         url = f"{self.api_url}/stock/products/{purchase_data['product_id']}/add"
         
-        today = date.today()  # or datetime.today() if you're using datetime
-        days_out = purchase_data['days_out']
-        shopping_location_id = purchase_data['shopping_location_id']
-
-        logger.info(f"Days out: {days_out}")
-        expiration_date_calc = (today + timedelta(days=days_out)).isoformat()
-
+        expiration_date = (date.today() + timedelta(days=purchase_data['days_out'])).isoformat()
         calc_amount = purchase_data['amount'] * product_data['qu_conversion_factor_purchase_to_stock']
-        calc_price = purchase_data.get('price') / product_data['qu_conversion_factor_purchase_to_stock']
+        calc_price = purchase_data.get('price', 0) / product_data['qu_conversion_factor_purchase_to_stock']
         
-        logger.info(f"Calculated amount: {calc_amount}")
-
-        # Prepare purchase data for Grocy API
         grocy_purchase = {
             'amount': calc_amount,
             'transaction_type': 'purchase',
-            'best_before_date': expiration_date_calc,
+            'best_before_date': expiration_date,
             'price': calc_price,
-            'shopping_location_id': shopping_location_id,
+            'shopping_location_id': purchase_data['shopping_location_id'],
         }
-        logger.info(f"Request data: {grocy_purchase}")
 
         try:
             response = requests.post(
                 url,
                 headers=self.headers,
                 data=json.dumps(grocy_purchase)
-            )
             response.raise_for_status()
-            
             return response.json()
         except Exception as e:
-            print(f"Error adding purchase: {e}")
+            logger.error(f"Error adding purchase: {e}")
             return {'error': str(e)}
     
-    def _get_category_id_by_name(self, category_name):
-        """
-        Get category ID by name
-        
-        Args:
-            category_name: Category name
-            
-        Returns:
-            Category ID if found, None otherwise
-        """
-        categories = self.get_product_categories()
-        
-        for category in categories:
-            if category.get('name') == category_name:
-                return category.get('id')
-        
-        return None
-
     def calculate_upc_check_digit(self, code11):
         """
-        Given 11-digit UPC code, calculate the 12th check digit.
+        Calculate the 12th check digit for an 11-digit UPC code.
+        
+        Args:
+            code11 (str): 11-digit UPC code without check digit.
+            
+        Returns:
+            str: The calculated check digit.
+            
+        Raises:
+            ValueError: If input is not 11 digits.
         """
         if len(code11) != 11 or not code11.isdigit():
             raise ValueError("Input must be an 11-digit string")
         
-        total = 0
-        for i, digit in enumerate(code11):
-            num = int(digit)
-            if i % 2 == 0:
-                total += num * 3  # Odd positions (0-indexed)
-            else:
-                total += num * 1  # Even positions
-        check_digit = (10 - (total % 10)) % 10
-        return str(check_digit)
+        total = sum(int(digit) * (3 if i % 2 == 0 else 1) 
+                  for i, digit in enumerate(code11))
+        return str((10 - (total % 10)) % 10)
 
     def build_upc_from_receipt(self, receipt_code):
         """
-        Normalize a 10-digit receipt code to a valid 12-digit UPC-A code.
-        Pads with a leading 0, then calculates the correct check digit.
+        Convert a 10-digit receipt code to valid 12-digit UPC-A format.
+        
+        Args:
+            receipt_code (str): 10-digit numeric receipt code.
+            
+        Returns:
+            str: 12-digit UPC-A code with leading zero and check digit.
+            
+        Raises:
+            ValueError: If input is not 10 digits.
         """
         if len(receipt_code) != 10 or not receipt_code.isdigit():
             raise ValueError("Expected a 10-digit numeric receipt code")
         
-        base_code = "0" + receipt_code  # pad to 11 digits
-        check_digit = self.calculate_upc_check_digit(base_code)
-        return base_code + check_digit
+        base_code = "0" + receipt_code
+        return base_code + self.calculate_upc_check_digit(base_code)
 
     def normalize_receipt_barcode(self, receipt_code):
+        """
+        Normalize a receipt barcode to standard format.
+        
+        Args:
+            receipt_code (str): The barcode to normalize.
+            
+        Returns:
+            str: Normalized barcode (12-digit UPC if input is 10 digits).
+        """
         if len(receipt_code) == 10 and receipt_code.isdigit():
             return self.build_upc_from_receipt(receipt_code)
-        else:
-            return receipt_code
+        return receipt_code
         
     def convert_purchase_quantities_to_stock(self, purchase_id, stock_id, amount):
         """
-        Convert purchase quantities to stock
-
+        Convert purchase quantities to stock quantities using conversion factors.
+        
         Args:
-            purchase_id: Purchase ID
-            stock_id: Stock ID
-            amount: Amount to convert
-
+            purchase_id (int): Purchase unit ID
+            stock_id (int): Stock unit ID
+            amount (float): Amount to convert
+            
         Returns:
-            Receipt code if successful, error message otherwise
+            float: Converted amount, or error dict if conversion fails.
         """
         conversions = self.get_quantity_unit_conversions()
         try:
             for conversion in conversions:
                 if conversion['from_qu_id'] == purchase_id and conversion['to_qu_id'] == stock_id:
-                    amount = amount * conversion['factor']
-
+                    return amount * conversion['factor']
             return amount
         except Exception as e:
-            print(f"Error converting purchase quantities to stock: {e}")
+            logger.error(f"Error converting quantities: {e}")
             return {'error': str(e)}
